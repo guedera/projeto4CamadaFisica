@@ -5,13 +5,17 @@ from autolimpa import clear_terminal
 from recebe_datagrama import *
 import os
 import crcmod  # Importa o módulo crcmod para cálculo de CRC
-
+import datetime
+import binascii
+from log_utils import log_message, initialize_log
 
 serialName = "/dev/ttyACM1"
 
 def main():
     try:
-        imageW = "/home/guedera/Documents/Aulas/Camadas/projeto3CamadaFisica/codes/img/imagemcopia.png"  # Changed filename to match requirement
+        initialize_log()
+        
+        imageW = "/home/guedera/Documents/Aulas/Camadas/projeto3CamadaFisica/codes_server/img/imagemcopia.png"
         
         handshake = False
         numero_servidor = 8
@@ -49,12 +53,19 @@ def main():
                 EoP, len_EoP = com1.getData(3)
                 h0,h1,h2,h3,h4,h5,h6,h7,_,_,_,_ = interpreta_head(head)
                 
+                # log do handshake
+                log_message('receb', h0, 16)
+                
                 if h0 == 1 and h5 == numero_servidor: # Se for handshake e para este servidor
                     handshake = True
                     # Envia resposta de handshake
                     head_bytes = bytearray(head)
                     head_bytes[0] = 2 # Altera tipo para handshake server
                     pacote = bytes(head_bytes) + EoP
+                    
+                    # Log do envio de resposta ao handshake
+                    log_message('envio', 2, len(pacote))
+                    
                     com1.sendData(pacote)
                     print("Handshake confirmado. Aguardando dados...")
                     
@@ -86,15 +97,27 @@ def main():
                 head, _ = com1.getData(12)  # Lê o cabeçalho
                 h0,h1,h2,h3,h4,h5,h6,h7,h8,h9,h10,h11 = interpreta_head(head)
                 
+                # Log da recepção de pacote
+                if h0 == 3:  # Se for pacote de dados
+                    # Verifica o tamanho do payload (que está em h5 agora)
+                    payload, _ = com1.getData(h5)  # Lê o payload
+                    EoP, _ = com1.getData(3)  # Lê o EoP
+                    
+                    # Extrai o CRC do header para o log
+                    crc_hex = binascii.hexlify(bytes([h10, h11])).decode().upper()
+                    
+                    # Log da recepção do pacote de dados
+                    log_message('receb', h0, 15 + h5, h4, h3, crc_hex)
+                else:
+                    # Log de outros tipos de pacote
+                    log_message('receb', h0, 15)
+                
                 # Verifica se recebeu um pacote de timeout do cliente
                 if h0 == 5:  # Tipo de pacote = timeout
                     print(f"Cliente reportou timeout para pacote {h4}. Finalizando comunicação.")
                     break
                 
                 if h0 == 3:  # Se for pacote de dados
-                    payload, _ = com1.getData(h5)  # Lê o payload (tamanho está em h5 agora)
-                    EoP, _ = com1.getData(3)  # Lê o EoP
-                    
                     # CORREÇÃO: Usar h3 para determinar o número total de pacotes
                     if total_pacotes == 0:
                         total_pacotes = h3  # Atualiza o total de pacotes a receber
@@ -118,6 +141,10 @@ def main():
                         head_bytes[6] = n  # Solicita o pacote esperado
                         head_bytes[7] = 0  # Sucesso = falso
                         pacote = bytes(head_bytes) + EoP
+                        
+                        # Log do envio de solicitação de reenvio por erro CRC
+                        log_message('envio', 6, len(pacote))
+                        
                         com1.sendData(pacote)
                         continue
                     
@@ -131,6 +158,10 @@ def main():
                         head_bytes[0] = 4  # Tipo de confirmação positiva
                         head_bytes[7] = 1  # Sucesso = verdadeiro
                         pacote = bytes(head_bytes) + EoP
+                        
+                        # Log do envio de confirmação positiva
+                        log_message('envio', 4, len(pacote))
+                        
                         com1.sendData(pacote)
                         
                         n += 1  # Incrementa contador de pacotes esperados
@@ -142,6 +173,10 @@ def main():
                         head_bytes[6] = n  # Solicita o pacote esperado
                         head_bytes[7] = 0  # Sucesso = falso
                         pacote = bytes(head_bytes) + EoP
+                        
+                        # Log do envio de solicitação de reenvio por ordem errada
+                        log_message('envio', 6, len(pacote))
+                        
                         com1.sendData(pacote)
                         
                         print(f"Pacote errado, esperava {n}, recebeu {h4}. Solicitando reenvio...")
@@ -156,6 +191,10 @@ def main():
                     head_bytes[4] = total_pacotes  # Número do último pacote (total)
                     head_bytes[7] = 1  # Sucesso = verdadeiro
                     pacote = bytes(head_bytes) + EoP
+                    
+                    # Log do envio de confirmação final
+                    log_message('envio', 4, len(pacote))
+                    
                     com1.sendData(pacote)
                     print("Confirmação final enviada.")
                     break
