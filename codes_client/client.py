@@ -118,7 +118,7 @@ def main():
                     if certo(rxBuffer, i):
                         print("Pacote {} confirmado!".format(i))
                         print("Iniciando envio do próximo pacote...")
-                        i += 1
+                        i += 1 #teste de ordem errada
                         com1.rx.clearBuffer()
                         time.sleep(0.5)
                         response_received = True

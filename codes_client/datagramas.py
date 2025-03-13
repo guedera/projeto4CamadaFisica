@@ -25,7 +25,7 @@ def datagrama(bytes_entrada,n_pacote:int,tipo:int,erro:int,sucesso:int,id:int, p
     
     # Armazena os bytes do CRC16 em h10 e h11
     h10 = bytes([checksum_bytes[0]])  # Primeiro byte do CRC16
-    h11 = bytes([checksum_bytes[1]])  # Segundo byte do CRC16
+    h11 = bytes([checksum_bytes[1]])  # Segundo byte do CRC16 testeeeeeeeeeeeee errado
     
     EoP = b'\xAA\xBB\xCC'
     return (h0+h1+h2+h3+h4+h5+h6+h7+h8+h9+h10+h11+bytes_entrada+EoP)
