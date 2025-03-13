@@ -5,11 +5,33 @@ from autolimpa import clear_terminal
 from separa import separa
 from datagramas import datagrama
 from certo import check_h0, certo
+import datetime
+import binascii
 
 serialName = "/dev/ttyACM0"
 
+def log_message(action, message_type, message_size, packet_num=None, total_packets=None, crc=None):
+    timestamp = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S.%f")[:-3]
+    
+    if packet_num is not None and total_packets is not None and crc is not None:
+        log_line = f"{timestamp} / {action} / {message_type} / {message_size} / {packet_num} / {total_packets} / {crc}"
+    else:
+        log_line = f"{timestamp} / {action} / {message_type} / {message_size}"
+    
+    log_path = "/home/guedera/Documents/Aulas/Camadas/projeto4CamadaFisica/codes_client/client_log.txt"
+    
+
+    with open(log_path, "a") as log_file:
+        log_file.write(log_line + "\n")
+    
+    return log_line
+
 def main():
     try:
+        log_path = "/home/guedera/Documents/Aulas/Camadas/projeto4CamadaFisica/codes_client/client_log.txt"
+        with open(log_path, "w") as log_file:
+            log_file.write("Timestamp / Ação / Tipo / Tamanho / Pacote / Total / CRC\n")
+            
         numero_server = 8
         print("Iniciou o main")
         com1 = enlace(serialName)
@@ -37,7 +59,10 @@ def main():
 
             load_hs = b'0'
             txBuffer = datagrama(load_hs,1,1,0,0,numero_server,0) #handshake client = 1, handshake server = 2, dados = 3, eop certo = 4, timeou = 5, erro = 6
-
+            
+            # Log do envio do handshake
+            log_message('envio', 1, len(txBuffer))
+            
             com1.sendData(txBuffer)
             print("Pacote de handshake enviado!")
 
@@ -56,7 +81,10 @@ def main():
                     head, _ = com1.getData(12)  # Obtém os 12 bytes do header
                     eop, _ = com1.getData(3)    # Obtém os 3 bytes do EoP
                     
-                    if check_h0(head, 2) and eop == b'\xAA\xBB\xCC': #check se o pacote é de handshake (2 pelo server)
+                    # Log da recepção da resposta do handshake
+                    log_message('receb', head[0], 15)
+                    
+                    if check_h0(head, 2) and eop == b'\xAA\xBB\xCC': # check se o pacote é de handshake (2 pelo server)
                         print("Handshake confirmado!")
                         comprimento = True  # sai do loop do handshake
                         com1.rx.clearBuffer()
@@ -65,22 +93,18 @@ def main():
                         print("Handshake falhou! Resposta inválida.")
                         com1.rx.clearBuffer()
                 
-                # Evita consumo excessivo de CPU
                 time.sleep(0.1)
             
-            # Se o handshake foi bem-sucedido, sai do loop de tentativas
             if comprimento:
                 break
                 
             print(f"Timeout! Não recebeu resposta do servidor após {handshake_timeout} segundos.")
 
-        # Verifica se o handshake foi bem-sucedido após as tentativas
         if not comprimento:
             print("Falha no handshake após 3 tentativas. Encerrando o programa.")
             com1.disable()
-            return  # Encerra a função main
+            return
             
-        # O resto do código permanece o mesmo para o envio da imagem
         imageR = "/home/guedera/Documents/Aulas/Camadas/projeto3CamadaFisica/codes/img/image.png"
         bytes_imagem = open(imageR, 'rb').read() #imagem em sequencia de bytes
         bytes_partes = separa(bytes_imagem) #separa a imagem em partes de no max 70 bytes e coloca numa lista
@@ -89,8 +113,15 @@ def main():
         print(len(bytes_partes))
         while i <= len(bytes_partes):
             time.sleep(0.5)
-            data = datagrama(bytes_partes[i-1],i,3,0,0,numero_server,len(bytes_partes))
+            data = datagrama(bytes_partes[i-1], i, 3, 0, 0, numero_server, len(bytes_partes))
+            
             txBuffer = data
+            
+            crc_bytes = txBuffer[10:12]
+            crc_hex = binascii.hexlify(crc_bytes).decode().upper()
+            
+            log_message('envio', 3, len(txBuffer), i, len(bytes_partes), crc_hex)
+            
             com1.sendData(txBuffer)            
             txSize = com1.tx.getStatus()
             print('enviou = {} bytes!' .format(txSize))
@@ -115,10 +146,13 @@ def main():
                 if com1.rx.getBufferLen() >= 15:
                     rxBuffer, _ = com1.getData(15)
                     
+                    # Log da recepção da resposta do servidor
+                    log_message('receb', rxBuffer[0], 15)
+                    
                     if certo(rxBuffer, i):
                         print("Pacote {} confirmado!".format(i))
                         print("Iniciando envio do próximo pacote...")
-                        i += 1 #teste de ordem errada
+                        i += 1
                         com1.rx.clearBuffer()
                         time.sleep(0.5)
                         response_received = True
@@ -127,6 +161,10 @@ def main():
                         time.sleep(.5)
                         retries += 1
                         com1.rx.clearBuffer()
+                        
+                        # Log do reenvio do pacote
+                        log_message('envio', 3, len(txBuffer), i, len(bytes_partes), crc_hex)
+                        
                         com1.sendData(txBuffer)
                         print("Retentativa {} de {}".format(retries, max_retries))
                         time.sleep(0.5)
@@ -137,11 +175,18 @@ def main():
                     com1.rx.clearBuffer()
                     
                     if retries < max_retries:
+                        # Log do reenvio do pacote após timeout
+                        log_message('envio', 3, len(txBuffer), i, len(bytes_partes), crc_hex)
+                        
                         com1.sendData(txBuffer)
                         print("Retentativa {} de {}".format(retries, max_retries))
                     else:
                         # Enviar pacote de timeout (tipo 5)
                         timeout_packet = datagrama(b'', i, 5, 0, 0, numero_server, len(bytes_partes))
+                        
+                        # Log do envio do pacote de timeout
+                        log_message('envio', 5, len(timeout_packet))
+                        
                         com1.sendData(timeout_packet)
                         print("Máximo de retentativas atingido. Enviando pacote de notificação de timeout.")
                         time.sleep(1)
@@ -167,6 +212,9 @@ def main():
         # Verifica se recebeu dados ou se houve timeout
         if com1.rx.getBufferLen() >= 15:
             rxBuffer, _ = com1.getData(15)
+            
+            # Log da recepção da confirmação final
+            log_message('receb', rxBuffer[0], 15)
             
             if certo(rxBuffer, len(bytes_partes)):
                 print("Confirmação final recebida! Pacote {} confirmado!".format(len(bytes_partes)))
