@@ -4,6 +4,7 @@ import numpy as np
 from autolimpa import clear_terminal
 from recebe_datagrama import *
 import os
+import crcmod  # Importa o módulo crcmod para cálculo de CRC
 
 
 serialName = "/dev/ttyACM1"
@@ -83,7 +84,7 @@ def main():
                 last_packet_time = time.time()
                 
                 head, _ = com1.getData(12)  # Lê o cabeçalho
-                h0,h1,h2,h3,h4,h5,h6,h7,_,_,_,_ = interpreta_head(head)
+                h0,h1,h2,h3,h4,h5,h6,h7,h8,h9,h10,h11 = interpreta_head(head)
                 
                 # Verifica se recebeu um pacote de timeout do cliente
                 if h0 == 5:  # Tipo de pacote = timeout
@@ -101,6 +102,25 @@ def main():
                     
                     print(f"Recebido pacote {h4} de {total_pacotes} pacotes")
                     
+                    # Verificar o CRC16 do payload recebido
+                    crc16 = crcmod.predefined.Crc('crc-16')
+                    crc16.update(payload)
+                    checksum_bytes = crc16.digest()
+                    
+                    # Comparar com o CRC16 enviado no header (h10 e h11)
+                    crc_check = (checksum_bytes[0] == h10 and checksum_bytes[1] == h11)
+                    
+                    if not crc_check:
+                        print(f"ERRO: CRC16 inválido no pacote {h4}. Solicitando reenvio...")
+                        # Pacote com CRC incorreto, pede reenvio
+                        head_bytes = bytearray(head)
+                        head_bytes[0] = 6  # Tipo de erro
+                        head_bytes[6] = n  # Solicita o pacote esperado
+                        head_bytes[7] = 0  # Sucesso = falso
+                        pacote = bytes(head_bytes) + EoP
+                        com1.sendData(pacote)
+                        continue
+                    
                     # Verifica se é o pacote esperado
                     if h4 == n:
                         # Adiciona o payload ao buffer da imagem
@@ -114,7 +134,7 @@ def main():
                         com1.sendData(pacote)
                         
                         n += 1  # Incrementa contador de pacotes esperados
-                        print(f"Pacote {h4} confirmado. Esperando próximo pacote...")
+                        print(f"Pacote {h4} confirmado. CRC16 válido. Esperando próximo pacote...")
                     else:
                         # Pacote errado, pede reenvio
                         head_bytes = bytearray(head)

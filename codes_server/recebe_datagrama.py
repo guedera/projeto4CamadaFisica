@@ -1,4 +1,3 @@
-
 def interpreta_head(head:bytes) -> tuple :
     l =[]
     for b in head:
@@ -55,30 +54,3 @@ def altera_byte(head:bytes, tipo, numero_pckt_recebido:int=None):
 
 def verifica_pacote(pl,npckt,contador):
     return npckt == contador #and pl == ????
-
-
-
-
-
-       
-
-
-
-    
-        
-        
-
-     
-
-
-
-
-
-    
-
-# sequencia= b"\x01\x01\x01F\x00F\x00\x000000\x10]\xe9q\x12U\x1c\x12&9\xc0\xf1\x947\xb4\xb6\xc0\xcc\xd1\xc7\x90\x03\xc1\xd4v(\xa7o\x9e\\o\x08e;\x13\xdd\xe4+s\xe0\x99\x01\xaf\x8e',\x06\x85\xedLi\xd2V\x91/\x8f\x1b9\x9b@\xa5\x11\xbb@\xa3\x96A@6\x11\xaa\xbb\xcc"
-
-    
-
-
-

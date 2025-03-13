@@ -1,4 +1,5 @@
 from separa import separa
+import crcmod  # Importa o módulo crcmod para cálculo de CRC
 
 def datagrama(bytes_entrada,n_pacote:int,tipo:int,erro:int,sucesso:int,id:int, pacotes:int) -> list:
     h0 = tipo.to_bytes(1, 'big') #handhsake client = 1, handshake server = 2, dados = 3, eop certo = 4, timeou = 5, erro = 6
@@ -16,8 +17,16 @@ def datagrama(bytes_entrada,n_pacote:int,tipo:int,erro:int,sucesso:int,id:int, p
     h7 = sucesso.to_bytes(1, 'big') #mudar
     h8 = b'0' #projeto 5 
     h9 = b'0' #projeto 5
-    h10 = b'0' #livre
-    h11 = b'0' #livre    
+    
+    # Calcula o CRC16 para o payload (bytes_entrada)
+    crc16 = crcmod.predefined.Crc('crc-16')
+    crc16.update(bytes_entrada)
+    checksum_bytes = crc16.digest()  # Retorna os 2 bytes do CRC16
+    
+    # Armazena os bytes do CRC16 em h10 e h11
+    h10 = bytes([checksum_bytes[0]])  # Primeiro byte do CRC16
+    h11 = bytes([checksum_bytes[1]])  # Segundo byte do CRC16
+    
     EoP = b'\xAA\xBB\xCC'
     return (h0+h1+h2+h3+h4+h5+h6+h7+h8+h9+h10+h11+bytes_entrada+EoP)
 
